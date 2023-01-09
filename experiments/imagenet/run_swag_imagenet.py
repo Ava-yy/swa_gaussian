@@ -17,23 +17,23 @@ parser = argparse.ArgumentParser(description="SGD/SWA training")
 parser.add_argument(
     "--dir",
     type=str,
-    default=None,
-    required=True,
+    default='./models',
+    required=False,
     help="training directory (default: None)",
 )
 
 parser.add_argument(
     "--data_path",
     type=str,
-    default=None,
-    required=True,
+    default='../../imagenet',
+    required=False,
     metavar="PATH",
     help="path to datasets location (default: None)",
 )
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=256,
+    default=64,
     metavar="N",
     help="input batch size (default: 256)",
 )
@@ -47,8 +47,8 @@ parser.add_argument(
 parser.add_argument(
     "--model",
     type=str,
-    default=None,
-    required=True,
+    default='resnet50',
+    required=False,
     metavar="MODEL",
     help="model name (default: None)",
 )
@@ -72,9 +72,9 @@ parser.add_argument(
 parser.add_argument(
     "--epochs",
     type=int,
-    default=5,
+    default=10,
     metavar="N",
-    help="number of epochs to train (default: 5)",
+    help="number of epochs to train (default: 10)",
 )
 parser.add_argument(
     "--save_freq", type=int, default=1, metavar="N", help="save frequency (default: 1)"
@@ -111,7 +111,7 @@ parser.add_argument(
 parser.add_argument(
     "--swa_start",
     type=float,
-    default=161,
+    default=0,
     metavar="N",
     help="SWA start epoch number (default: 161)",
 )
@@ -148,6 +148,7 @@ parser.add_argument("--no_schedule", action="store_true", help="store schedule")
 
 args = parser.parse_args()
 
+args.pretrained = True
 
 args.device = None
 if torch.cuda.is_available():
@@ -282,6 +283,7 @@ for epoch in range(start_epoch, args.epochs):
         train_res = utils.train_epoch(
             loaders["train"], model, criterion, optimizer, verbose=True
         )
+
 
     if (
         epoch == 0

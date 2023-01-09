@@ -4,8 +4,10 @@ import random
 import sys
 import time
 import tabulate
+from pathlib import Path
 
 import numpy as np
+import json
 
 import torch
 import torch.nn.functional as F
@@ -20,15 +22,15 @@ parser = argparse.ArgumentParser(description="SGD/SWA training")
 parser.add_argument(
     "--data_path",
     type=str,
-    default=None,
-    required=True,
+    default='../../imagenet',
+    required=False,
     metavar="PATH",
     help="path to datasets location (default: None)",
 )
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=256,
+    default=8,
     metavar="N",
     help="input batch size (default: 256)",
 )
@@ -42,8 +44,8 @@ parser.add_argument(
 parser.add_argument(
     "--model",
     type=str,
-    default=None,
-    required=True,
+    default='resnet50',
+    required=False,
     metavar="MODEL",
     help="model name (default: None)",
 )
@@ -60,9 +62,13 @@ parser.add_argument(
 parser.add_argument(
     "--num_samples",
     type=int,
-    default=30,
+    default=10,
     metavar="N",
     help="number of samples for SWAG (default: 30)",
+)
+parser.add_argument(
+    "--saliency",
+    action="store_true",
 )
 
 parser.add_argument("--scale", type=float, default=1.0, help="SWAG scale")
@@ -78,15 +84,15 @@ parser.add_argument(
 parser.add_argument(
     "--save_path_swa",
     type=str,
-    default=None,
-    required=True,
+    default='save_swa',
+    required=False,
     help="path to SWA npz results file",
 )
 parser.add_argument(
     "--save_path_swag",
     type=str,
-    default=None,
-    required=True,
+    default='save_swag',
+    required=False,
     help="path to SWAG npz results file",
 )
 
@@ -116,7 +122,7 @@ print("Preparing model")
 swag_model = SWAG(
     model_class,
     no_cov_mat=not args.cov_mat,
-    loading=True,
+    # loading=True,
     max_num_models=20,
     num_classes=num_classes,
 )
@@ -128,79 +134,122 @@ print("Loading checkpoint %s" % args.ckpt)
 checkpoint = torch.load(args.ckpt)
 swag_model.load_state_dict(checkpoint["state_dict"])
 
-print("SWA")
-swag_model.sample(0.0)
-print("SWA BN update")
-utils.bn_update(loaders["train"], swag_model, verbose=True, subset=0.1)
-print("SWA EVAL")
-swa_res = utils.predict(loaders["test"], swag_model, verbose=True)
+mean, var, cov_mat_list = swag_model.export_numpy_params(True)
 
-targets = swa_res["targets"]
-swa_predictions = swa_res["predictions"]
 
-swa_accuracy = np.mean(np.argmax(swa_predictions, axis=1) == targets)
-swa_nll = -np.mean(
-    np.log(swa_predictions[np.arange(swa_predictions.shape[0]), targets] + eps)
-)
-print("SWA. Accuracy: %.2f%% NLL: %.4f" % (swa_accuracy * 100, swa_nll))
-swa_entropies = -np.sum(np.log(swa_predictions + eps) * swa_predictions, axis=1)
+# print("SWA")
+# swag_model.sample(0.0)
+# print("SWA BN update")
+# utils.bn_update(loaders["train"], swag_model, verbose=True, subset=0.1)
+# print("SWA EVAL")
+# swa_res = utils.predict(loaders["test"], swag_model, verbose=True)
 
-np.savez(
-    args.save_path_swa,
-    accuracy=swa_accuracy,
-    nll=swa_nll,
-    entropies=swa_entropies,
-    predictions=swa_predictions,
-    targets=targets,
-)
+# targets = swa_res["targets"]
+# swa_predictions = swa_res["predictions"]
 
-print("SWAG")
+# swa_accuracy = np.mean(np.argmax(swa_predictions, axis=1) == targets)
+# swa_nll = -np.mean(
+#     np.log(swa_predictions[np.arange(swa_predictions.shape[0]), targets] + eps)
+# )
+# print("SWA. Accuracy: %.2f%% NLL: %.4f" % (swa_accuracy * 100, swa_nll))
+# swa_entropies = -np.sum(np.log(swa_predictions + eps) * swa_predictions, axis=1)
 
-swag_predictions = np.zeros((len(loaders["test"].dataset), num_classes))
+# np.savez(
+#     args.save_path_swa,
+#     accuracy=swa_accuracy,
+#     nll=swa_nll,
+#     entropies=swa_entropies,
+#     predictions=swa_predictions,
+#     targets=targets,
+# )
 
-for i in range(args.num_samples):
-    swag_model.sample(args.scale, cov=args.cov_mat and (not args.use_diag_bma))
+# print("SWAG")
 
-    print("SWAG Sample %d/%d. BN update" % (i + 1, args.num_samples))
-    utils.bn_update(loaders["train"], swag_model, verbose=True, subset=0.1)
-    print("SWAG Sample %d/%d. EVAL" % (i + 1, args.num_samples))
-    res = utils.predict(loaders["test"], swag_model, verbose=True)
-    predictions = res["predictions"]
+# save_dir = Path("results_layer4_1_relu_avgpool")
+# if not save_dir.exists():
+#     save_dir.mkdir()
 
-    accuracy = np.mean(np.argmax(predictions, axis=1) == targets)
-    nll = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets] + eps))
-    print(
-        "SWAG Sample %d/%d. Accuracy: %.2f%% NLL: %.4f"
-        % (i + 1, args.num_samples, accuracy * 100, nll)
-    )
+# swag_predictions = np.zeros((len(loaders["test"].dataset), num_classes))
 
-    swag_predictions += predictions
+# for i in range(args.num_samples):
 
-    ens_accuracy = np.mean(np.argmax(swag_predictions, axis=1) == targets)
-    ens_nll = -np.mean(
-        np.log(
-            swag_predictions[np.arange(swag_predictions.shape[0]), targets] / (i + 1)
-            + eps
-        )
-    )
-    print(
-        "Ensemble %d/%d. Accuracy: %.2f%% NLL: %.4f"
-        % (i + 1, args.num_samples, ens_accuracy * 100, ens_nll)
-    )
+#     print('sample i : ',i)
+#     swag_model.sample(args.scale, cov=args.cov_mat and (not args.use_diag_bma))
 
-swag_predictions /= args.num_samples
+#     print("SWAG Sample %d/%d. BN update" % (i + 1, args.num_samples))
+#     utils.bn_update(loaders["train"], swag_model, verbose=True, subset=0.1)
+#     print("SWAG Sample %d/%d. EVAL" % (i + 1, args.num_samples))
 
-swag_accuracy = np.mean(np.argmax(swag_predictions, axis=1) == targets)
-swag_nll = -np.mean(
-    np.log(swag_predictions[np.arange(swag_predictions.shape[0]), targets] + eps)
-)
-swag_entropies = -np.sum(np.log(swag_predictions + eps) * swag_predictions, axis=1)
+#     activations_all = []
+#     def store_activations(module, input, output):
 
-np.savez(
-    args.save_path_swag,
-    accuracy=swag_accuracy,
-    nll=swag_nll,
-    entropies=swag_entropies,
-    predictions=swag_predictions,
-    targets=targets,
-)
+#         global activations_all
+
+#         # print('output shape : ',output.shape) # (8,2048,7,7) (batch size, num_channels，7，7)
+
+#         activations = F.avg_pool2d(output, kernel_size=7) # (8,2048,1,1)
+
+#         # print('activations shape : ',activations.shape)
+
+#         activations = output.detach().cpu()[:,:,0,0].tolist()
+
+#         # print('output size: ',output.shape) #(batch size, 2048, 1,1); 2048 is the dimension of avgpool output
+#         # print('activations shape : ',len(activations),len(activations[0]),activations[0]) (8, 2048) (batch_size, num of channels)
+#         activations_all.extend(activations)
+
+#     hook = swag_model.base.layer4[1].register_forward_hook(store_activations)
+
+#     res = utils.predict(loaders["test"], swag_model, verbose=True)
+#     predictions = res["predictions"]
+
+#     json.dump(activations_all,open(save_dir / f'activations_{i:03d}.json','w'))
+
+#     hook.remove()
+
+#     print('predictions shape : ',predictions.shape) #(N,num_classes)
+#     # print('activations all shape : ',len(activations_all),len(activations_all[0])) (750,2048) (N,num of channels)
+
+#     print('saliency map')
+#     saliency_maps = utils.calc_saliency_maps(loaders["test"], swag_model)
+#     torch.save(saliency_maps, save_dir / f"saliency_maps_{i:03d}.pth")
+
+#     print('accuracy')
+#     accuracy = np.mean(np.argmax(predictions, axis=1) == targets)
+#     nll = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets] + eps))
+#     print(
+#         "SWAG Sample %d/%d. Accuracy: %.2f%% NLL: %.4f"
+#         % (i + 1, args.num_samples, accuracy * 100, nll)
+#     )
+
+#     swag_predictions += predictions
+
+#     torch.save(predictions, save_dir / f"predictions_{i:03d}.pth")
+
+#     ens_accuracy = np.mean(np.argmax(swag_predictions, axis=1) == targets)
+#     ens_nll = -np.mean(
+#         np.log(
+#             swag_predictions[np.arange(swag_predictions.shape[0]), targets] / (i + 1)
+#             + eps
+#         )
+#     )
+#     print(
+#         "Ensemble %d/%d. Accuracy: %.2f%% NLL: %.4f"
+#         % (i + 1, args.num_samples, ens_accuracy * 100, ens_nll)
+#     )
+
+# swag_predictions /= args.num_samples
+
+# swag_accuracy = np.mean(np.argmax(swag_predictions, axis=1) == targets)
+# swag_nll = -np.mean(
+#     np.log(swag_predictions[np.arange(swag_predictions.shape[0]), targets] + eps)
+# )
+# swag_entropies = -np.sum(np.log(swag_predictions + eps) * swag_predictions, axis=1)
+
+# np.savez(
+#     args.save_path_swag,
+#     accuracy=swag_accuracy,
+#     nll=swag_nll,
+#     entropies=swag_entropies,
+#     predictions=swag_predictions,
+#     targets=targets,
+# )
