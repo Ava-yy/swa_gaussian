@@ -32,6 +32,27 @@ def swag_parameters(module, params, no_cov_mat=True):
         params.append((module, name))
 
 
+# def swag_parameters(module, params, no_cov_mat=True):
+
+#     for name,params in module.named_parameters():
+#         print('name, params : ',name,params.shape)
+        
+#         if module.named_parameters[name] is None:
+#             continue
+
+#         data = module.named_parameters[name].data
+#         module.named_parameters.pop(name)
+#         module.register_buffer("%s_mean" % name, data.new(data.size()).zero_())
+#         module.register_buffer("%s_sq_mean" % name, data.new(data.size()).zero_())
+
+#         if no_cov_mat is False:
+#             module.register_buffer(
+#                 "%s_cov_mat_sqrt" % name, data.new_empty((0, data.numel())).zero_()
+#             )
+
+#         params.append((module, name))
+
+
 class SWAG(torch.nn.Module):
     def __init__(
         self, base, no_cov_mat=True, max_num_models=0, var_clamp=1e-30, *args, **kwargs
@@ -189,26 +210,89 @@ class SWAG(torch.nn.Module):
                 )
         super(SWAG, self).load_state_dict(state_dict, strict)
 
+    # def export_numpy_params(self, export_cov_mat=False):
+    #     mean_list = []
+    #     sq_mean_list = []
+    #     cov_mat_list = []
+
+    #     for module, name in self.params:
+            
+    #         print('module,name : ',module,name)
+    #         mean = module.__getattr__("%s_mean" % name).cpu().numpy()
+    #         print('mean shape : ',mean.shape)
+
+    #         mean_list.append(module.__getattr__("%s_mean" % name).cpu().numpy().ravel())
+    #         sq_mean_list.append(
+    #             module.__getattr__("%s_sq_mean" % name).cpu().numpy().ravel()
+    #         )
+    #         if export_cov_mat:
+
+    #             cov_mat = module.__getattr__("%s_cov_mat_sqrt" % name).cpu().numpy()
+    #             print('cov_mat shape : ',name, cov_mat.shape)
+    #             cov_mat_list.append(
+    #                 cov_mat.ravel()
+    #             )
+    #     mean = np.concatenate(mean_list)
+    #     sq_mean = np.concatenate(sq_mean_list)
+    #     var = sq_mean - np.square(mean)
+
+    #     if export_cov_mat:
+    #         return mean, var, cov_mat_list
+    #     else:
+    #         return mean, var
+
+
     def export_numpy_params(self, export_cov_mat=False):
         mean_list = []
         sq_mean_list = []
         cov_mat_list = []
 
         for module, name in self.params:
+            
+            mean = module.__getattr__("%s_mean" % name).cpu().numpy()
+            print('mean shape : ', mean.shape) # (output_channels, input_channels, filter size, filter size)
+
             mean_list.append(module.__getattr__("%s_mean" % name).cpu().numpy().ravel())
+
+            sq_mean = module.__getattr__("%s_sq_mean" % name).cpu().numpy()
             sq_mean_list.append(
                 module.__getattr__("%s_sq_mean" % name).cpu().numpy().ravel()
             )
+
+            var = sq_mean - np.square(mean)
+            print('var shape : ',var.shape) # same as mean.shape : (output_channels, input_channels, filter size, filter size)
+
+            # sigma_diagonal = torch.diag(var.ravel()).cpu().numpy()
+            # print('sigma_diagonal shape : ',sigma_diagonal.shape)
+
             if export_cov_mat:
+                cov_mat = module.__getattr__("%s_cov_mat_sqrt" % name).cpu().numpy()
+                print('cov_mat shape : ',name, cov_mat.shape) # (k,output_channels*input_channels*filter_size*filter_size)
+
+                # d_hat = np.transpose(cov_mat) #(num of parameters,k)
+
                 cov_mat_list.append(
-                    module.__getattr__("%s_cov_mat_sqrt" % name).cpu().numpy().ravel()
+                    cov_mat.ravel()
                 )
+
+            if ((mean.shape[0]==1000) and (len(mean.shape) >=2)):
+                if(mean.shape[1]==2048):
+                    np.save(open('./layer_mean.npy','wb'),mean)
+                    # np.save(open('./diag_m.npy','wb'),sigma_diagonal)
+                    np.save(open('./layer_var.npy','wb'),var)
+                    np.save(open('./layer_cov_mat.npy','wb'),cov_mat)
+
+
+
+
+            # mean is theta_swa, var is the diagonal elements of diagonal matrix, cov_matrix^T is D^
+
         mean = np.concatenate(mean_list)
         sq_mean = np.concatenate(sq_mean_list)
         var = sq_mean - np.square(mean)
 
         if export_cov_mat:
-            return mean, var, cov_mat_list
+            return mean, var, cov_mat_list  # mean is theta_swa, var is the diagonal 
         else:
             return mean, var
 
