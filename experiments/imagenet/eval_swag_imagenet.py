@@ -80,20 +80,20 @@ parser.add_argument(
     "--seed", type=int, default=1, metavar="S", help="random seed (default: 1)"
 )
 
-# parser.add_argument(
-#     "--save_path_swa",
-#     type=str,
-#     default=None,
-#     required=True,
-#     help="path to SWA npz results file",
-# )
-# parser.add_argument(
-#     "--save_path_swag",
-#     type=str,
-#     default=None,
-#     required=True,
-#     help="path to SWAG npz results file",
-# )
+parser.add_argument(
+    "--save_path_swa",
+    type=str,
+    default=None,
+    required=True,
+    help="path to SWA npz results file",
+)
+parser.add_argument(
+    "--save_path_swag",
+    type=str,
+    default=None,
+    required=True,
+    help="path to SWAG npz results file",
+)
 
 args = parser.parse_args()
 
@@ -176,8 +176,8 @@ for i in range(args.num_samples):
     res = utils.predict(loaders["test"], swag_model, verbose=True)
     predictions = res["predictions"]
 
-    saliency_maps = utils.calc_saliency_maps(loaders["test"], swag_model, subset=0.1)
-    torch.save(saliency_maps, save_dir / f"saliency_maps_{i:03d}.pth")
+#     saliency_maps = utils.calc_saliency_maps(loaders["test"], swag_model, subset=0.1)
+#     torch.save(saliency_maps, save_dir / f"saliency_maps_{i:03d}.pth")
 
     accuracy = np.mean(np.argmax(predictions, axis=1) == targets)
     nll = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets] + eps))
@@ -210,11 +210,11 @@ swag_nll = -np.mean(
 )
 swag_entropies = -np.sum(np.log(swag_predictions + eps) * swag_predictions, axis=1)
 
-# np.savez(
-#     args.save_path_swag,
-#     accuracy=swag_accuracy,
-#     nll=swag_nll,
-#     entropies=swag_entropies,
-#     predictions=swag_predictions,
-#     targets=targets,
-# )
+np.savez(
+    args.save_path_swag,
+    accuracy=swag_accuracy,
+    nll=swag_nll,
+    entropies=swag_entropies,
+    predictions=swag_predictions,
+    targets=targets,
+)
