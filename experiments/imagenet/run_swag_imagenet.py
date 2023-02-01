@@ -9,15 +9,18 @@ import torch
 import torch.nn.functional as F
 import torchvision.models
 
-import data
-from swag import utils, losses
+from data_finetune import *
+from dataset import *
+
+from swag import utils,losses
+#from swag import utils_orig as utils
 from swag.posteriors import SWAG
 
 parser = argparse.ArgumentParser(description="SGD/SWA training")
 parser.add_argument(
     "--dir",
     type=str,
-    default='./models',
+    default='../../food-101/models',
     required=False,
     help="training directory (default: None)",
 )
@@ -25,11 +28,13 @@ parser.add_argument(
 parser.add_argument(
     "--data_path",
     type=str,
-    default='../../imagenet',
+    # default='../../imagenet',
+    default='../../food-101',
     required=False,
     metavar="PATH",
     help="path to datasets location (default: None)",
 )
+
 parser.add_argument(
     "--batch_size",
     type=int,
@@ -37,6 +42,7 @@ parser.add_argument(
     metavar="N",
     help="input batch size (default: 256)",
 )
+
 parser.add_argument(
     "--num_workers",
     type=int,
@@ -44,6 +50,7 @@ parser.add_argument(
     metavar="N",
     help="number of workers (default: 4)",
 )
+
 parser.add_argument(
     "--model",
     type=str,
@@ -52,11 +59,13 @@ parser.add_argument(
     metavar="MODEL",
     help="model name (default: None)",
 )
+
 parser.add_argument(
     "--pretrained",
     action="store_true",
     help="pretrained model usage flag (default: off)",
 )
+
 parser.add_argument(
     "--parallel", action="store_true", help="data parallel model switch (default: off)"
 )
@@ -76,9 +85,11 @@ parser.add_argument(
     metavar="N",
     help="number of epochs to train (default: 10)",
 )
+
 parser.add_argument(
     "--save_freq", type=int, default=1, metavar="N", help="save frequency (default: 1)"
 )
+
 parser.add_argument(
     "--eval_freq",
     type=int,
@@ -86,6 +97,7 @@ parser.add_argument(
     metavar="N",
     help="evaluation frequency (default: 1)",
 )
+
 parser.add_argument(
     "--lr_init",
     type=float,
@@ -93,6 +105,7 @@ parser.add_argument(
     metavar="LR",
     help="initial learning rate (default: 0.01)",
 )
+
 parser.add_argument(
     "--momentum",
     type=float,
@@ -100,14 +113,17 @@ parser.add_argument(
     metavar="M",
     help="SGD momentum (default: 0.9)",
 )
+
 parser.add_argument(
     "--wd", type=float, default=1e-4, help="weight decay (default: 1e-4)"
 )
 
 parser.add_argument("--swa", action="store_true", help="swa usage flag (default: off)")
+
 parser.add_argument(
     "--swa_cpu", action="store_true", help="store swag on cpu (default: off)"
 )
+
 parser.add_argument(
     "--swa_start",
     type=float,
@@ -115,9 +131,11 @@ parser.add_argument(
     metavar="N",
     help="SWA start epoch number (default: 161)",
 )
+
 parser.add_argument(
     "--swa_lr", type=float, default=0.02, metavar="LR", help="SWA LR (default: 0.02)"
 )
+
 parser.add_argument(
     "--swa_freq",
     type=int,
@@ -125,6 +143,7 @@ parser.add_argument(
     metavar="N",
     help="SWA model collection frequency/ num samples per epoch (default: 4)",
 )
+
 parser.add_argument("--cov_mat", action="store_true", help="save sample covariance")
 
 parser.add_argument(
@@ -134,6 +153,7 @@ parser.add_argument(
     metavar="CKPT",
     help="checkpoint to restor SWA from (default: None)",
 )
+
 parser.add_argument(
     "--loss",
     type=str,
@@ -172,11 +192,31 @@ print("Using model %s" % args.model)
 model_class = getattr(torchvision.models, args.model)
 
 print("Loading ImageNet from %s" % (args.data_path))
-loaders, num_classes = data.loaders(args.data_path, args.batch_size, args.num_workers)
+
+# loaders, num_classes = data.loaders(args.data_path, args.batch_size, args.num_workers)
+
+# loaders, num_classes = data_food101.loaders(args.data_path, args.batch_size, args.num_workers)
+
+train_df_path = '../../food-101/finetune_food101_train.csv'
+test_df_path = '../../food-101/finetune_food101_test.csv'
+CHOOSED_CLASSES = ['french_toast', 'greek_salad', 'caprese_salad', 'chocolate_cake', 'pizza', 'cup_cakes', 'carrot_cake','cheesecake','pancakes', 'strawberry_shortcake']
+
+loaders = data_loaders(train_df_path, test_df_path, train_batch_size=args.batch_size, test_batch_size=1)
+
+num_classes=10
+
+
+# x_train,y_train,x_test,y_test=load_data_from_folder()
+# train_ld=Data_Loader(x_train,y_train,is_train=True)
+# test_ld=Data_Loader(x_test,y_test,is_train=False)
+
+# loaders={"train": train_ld,"test": test_ld,}
 
 print("Preparing model")
-model = model_class(pretrained=args.pretrained, num_classes=num_classes)
+# model = model_class(pretrained=args.pretrained, num_classes=num_classes)
+model = torch.load("../../food-101/food101_finetune.pt")
 model.to(args.device)
+
 
 if args.cov_mat:
     args.no_cov_mat = False
