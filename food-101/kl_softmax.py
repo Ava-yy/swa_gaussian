@@ -19,13 +19,14 @@ from tqdm import tqdm
 
 BASE_DIR = '/home/zhaoy32/Desktop/swa_gaussian/food-101'
 
-image_swag_result_dir = os.path.join(BASE_DIR,'image_finetune_swag_result')
+IMAGE_SWAG_RESULT_DIR = os.path.join(BASE_DIR,'image_swag_result/')
 
-if not os.path.exists(image_swag_result_dir):
+if not os.path.exists(IMAGE_SWAG_RESULT_DIR):
 
-	os.mkdir(image_swag_result_dir)
+	os.mkdir(IMAGE_SWAG_RESULT_DIR)
 
-def image_swag_result(base_dir):
+
+def image_swag_result(base_dir,image_swag_result_dir):
 
 # the softmax predictions from all swag sample model, and the finetuned model, for each image
 
@@ -64,7 +65,7 @@ def image_swag_result(base_dir):
 		image_item_res = {}
 		image_idx = image_res_finetune['image_id']
 		image_item_res['image_id'] = image_res_finetune['image_id']
-		image_item_res['image_path'] = image_res_finetune['image_id']
+		image_item_res['image_path'] = image_res_finetune['image_path']
 		image_item_res['label_id'] = image_res_finetune['label_id']
 		image_item_res['label'] = image_res_finetune['label']
 		image_item_res['finetune_softmax'] = image_res_finetune['predict_softmax']
@@ -73,15 +74,15 @@ def image_swag_result(base_dir):
 
 		#print(image_item_res['swag_softmax'],image_item_res['swag_pred'])
 
-		json.dump(image_item_res,open(os.path.join(base_dir,'image_finetune_swag_result/')+'image_'+str(image_idx)+'.json','w'))
+		json.dump(image_item_res,open(image_swag_result_dir+'image_'+str(image_idx)+'.json','w'))
 
 
 
-def kl_pair(base_dir,image_id, sample_i, sample_j):
+def kl_pair(base_dir,image_swag_result_dir,image_id, sample_i, sample_j):
 
 	base = 2
 
-	image_swag_data = json.load(open(os.path.join(base_dir,'image_finetune_swag_result/')+'image_'+str(image_id)+'.json','r'))
+	image_swag_data = json.load(open(image_swag_result_dir +'image_'+str(image_id)+'.json','r'))
 
 	swag_softmax_i = np.array(image_swag_data['swag_softmax'][sample_i])
 
@@ -92,13 +93,15 @@ def kl_pair(base_dir,image_id, sample_i, sample_j):
 	return kl_div_pair
 
 
-def kl_image(base_dir):
+def kl_image(base_dir,image_swag_result_dir):
 
 	image_kl = {}
 
-	for file in os.listdir(os.path.join(base_dir,'image_finetune_swag_result/')):
+	for file in os.listdir(image_swag_result_dir):
 
-		data = json.load(open(os.path.join(base_dir,'image_finetune_swag_result',file),'r'))
+		print(file)
+
+		data = json.load(open(os.path.join(image_swag_result_dir,file),'r'))
 
 		swag_sample_softmax = np.array(data['swag_softmax']) #(num of swag samples, num of classes)
 
@@ -110,9 +113,9 @@ def kl_image(base_dir):
 
 		for sample_i in range(swag_sample_softmax.shape[0]):
 
-			for sample_j in np.arange(i, swag_sample_softmax.shape[0]):
+			for sample_j in np.arange(sample_i, swag_sample_softmax.shape[0]):
 
-				kl_pair_res = kl_pair(base_dir,image_id,sample_i,sample_j)
+				kl_pair_res = kl_pair(base_dir, image_swag_result_dir, image_id,sample_i,sample_j)
 
 				image_kl[image_id][sample_i][sample_j] = kl_pair_res
 				image_kl[image_id][sample_j][sample_i] = kl_pair_res
@@ -125,9 +128,9 @@ def kl_image(base_dir):
 
 if __name__ == '__main__':
 
-	image_swag_result(BASE_DIR)
+	image_swag_result(BASE_DIR,IMAGE_SWAG_RESULT_DIR)
 
-	kl_image(BASE_DIR)
+	kl_image(BASE_DIR,IMAGE_SWAG_RESULT_DIR)
 
 
 
