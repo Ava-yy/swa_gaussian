@@ -9,6 +9,8 @@ import tqdm
 
 import torch.nn.functional as F
 
+from .interpretability_methods import gradcam, vanilla_gradients, integrated_gradients
+
 
 def flatten(lst):
     tmp = [i.contiguous().view(-1, 1) for i in lst]
@@ -72,7 +74,9 @@ def train_epoch(
     if verbose:
         loader = tqdm.tqdm(loader, total=num_batches)
 
-    for i, (input, target) in enumerate(loader):
+    # for i, (input, target) in enumerate(loader):
+
+    for i, (input, target, category, image_path,image_id) in enumerate(loader):
         if cuda:
             input = input.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
@@ -118,7 +122,9 @@ def eval(loader, model, criterion, cuda=True, regression=False, verbose=False):
     with torch.no_grad():
         if verbose:
             loader = tqdm.tqdm(loader)
-        for i, (input, target) in enumerate(loader):
+        # for i, (input, target) in enumerate(loader):
+        for i, (input, target, category, image_path,image_id) in enumerate(loader):
+
             if cuda:
                 input = input.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
@@ -137,27 +143,84 @@ def eval(loader, model, criterion, cuda=True, regression=False, verbose=False):
     }
 
 
-def predict(loader, model, verbose=False):
+def calc_saliency_maps(loader, model, subset=None):
+
+    model.eval()
+
+    num_batches = len(loader)
+
+    if subset is not None:
+        num_batches = int(num_batches * subset)
+        loader = itertools.islice(loader, num_batches)
+
+    #print(model.base.layer4[-1])
+    saliency_method = gradcam.GradCAM(model, model.base.layer4)
+
+    gradcam_list = []
+    for input, target in tqdm.tqdm(loader):
+        input = input.cuda(non_blocking=True)
+        target = target.cuda(non_blocking=True)
+        upsampled_gradcam, gradcam_map = saliency_method.get_saliency(input)
+
+        # upsampled_shape = upsampled_gradcam.shape
+        # upsampled_gradcam = upsampled_gradcam.reshape((upsampled_shape[0], -1))
+        # upsampled_gradcam_min = upsampled_gradcam.min(1)
+        # upsampled_gradcam_max = upsampled_gradcam.max(1)
+        # upsampled_gradcam_norm = (upsampled_gradcam_map - upsampled_gradcam_min[:, None]) / (
+        #     upsampled_gradcam_max[:, None] - upsampled_gradcam_min[:, None] + 1e-8
+        # )
+        # upsampled_gradcam_norm = upsampled_gradcam_norm.reshape(upsampled_shape)
+
+        # gradcam_list.append(upsampled_gradcam_norm)
+
+        gradcam_list.append(gradcam_map)
+
+    return gradcam_list
+
+
+# predict for food101
+def predict(loader, model, sample_id, verbose=False):
     predictions = list()
     targets = list()
 
     model.eval()
 
-    if verbose:
-        loader = tqdm.tqdm(loader)
+    print(model)
+
+    # if verbose:
+    #     loader = tqdm.tqdm(loader)
+
+    swag_prediction_list = []
+
 
     offset = 0
     with torch.no_grad():
-        for input, target in loader:
+
+        # for loader_idx, (input, target) in enumerate(loader): # start from category 0
+
+        for i, (input, target, category, image_path,image_id) in enumerate(loader):
+
             input = input.cuda(non_blocking=True)
+
             output = model(input)
 
             batch_size = input.size(0)
-            predictions.append(F.softmax(output, dim=1).cpu().numpy())
-            targets.append(target.numpy())
-            offset += batch_size
+            #print('batch size : ',batch_size) 1
+            
+            prediction = F.softmax(output, dim=1).cpu().numpy()
+            # print('prediction : ',prediction) [[_,_,_,_,_,_,_,_,_,_]]
 
-    return {"predictions": np.vstack(predictions), "targets": np.concatenate(targets)}
+            swag_prediction_list.append({'image_path':image_path[0],'label_id':int(target.item()),'label':category[0],'image_id':int(image_id.item()),'predict_softmax':prediction[0].tolist(),'sample_id':sample_id})
+
+            predictions.append(prediction)
+
+            targets.append(target.numpy())
+
+            offset += batch_size
+        
+    return {"result_dict": swag_prediction_list, "predictions": np.vstack(predictions),"targets": np.concatenate(targets)}
+
+    # return {"predictions": np.vstack(predictions), "targets": np.concatenate(targets)}
 
 
 def moving_average(net1, net2, alpha=1):
@@ -218,7 +281,9 @@ def bn_update(loader, model, verbose=False, subset=None, **kwargs):
         if verbose:
 
             loader = tqdm.tqdm(loader, total=num_batches)
-        for input, _ in loader:
+
+        print('loader : ',loader)
+        for input, _, _, _, _ in loader:
             input = input.cuda(non_blocking=True)
             input_var = torch.autograd.Variable(input)
             b = input_var.data.size(0)
@@ -242,7 +307,7 @@ def predictions(test_loader, model, seed=None, cuda=True, regression=False, **kw
     # model.eval()
     preds = []
     targets = []
-    for input, target in test_loader:
+    for input, target ,_ ,_ in test_loader:
         if seed is not None:
             torch.manual_seed(seed)
         if cuda:
