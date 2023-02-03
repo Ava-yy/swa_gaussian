@@ -41,11 +41,11 @@ CHOOSED_CLASSES = ['french_toast', 'greek_salad', 'caprese_salad', 'chocolate_ca
 
 app = Flask(__name__)
 CORS(app)
-å
+
 @app.route('/calculate_jacobian', methods=['GET','POST'])
 
 def calculate_jacobian():
-    
+
     client_data = flask.request.json
     image_id = client_data['image_id']
     sample_id = client_data['sample_id']
