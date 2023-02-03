@@ -31,6 +31,15 @@ parser.add_argument(
     metavar="PATH",
     help="path to datasets location (default: None)",
 )
+
+parser.add_argument(
+    "--swag_sample_model_dir",
+    type=str,
+    default='../../food-101/sample_models',
+    required=False,
+    help="training directory (default: None)",
+)
+
 parser.add_argument(
     "--batch_size",
     type=int,
@@ -189,10 +198,15 @@ swa_entropies = -np.sum(np.log(swa_predictions + eps) * swa_predictions, axis=1)
 
 print("SWAG")
 
+
 save_dir = Path("../../food-101/json_results")
 save_dir2 = Path("../../food-101/json_results2")
-save_dir.mkdir()
-save_dir2.mkdir()
+
+if not os.path.exists(save_dir):
+    os.mkdir(save_dir)
+
+if not os.path.exists(save_dir2):
+    os.mkdir(save_dir2)
 
 swag_predictions = np.zeros((len(loaders["test"].dataset), num_classes))
 
@@ -202,10 +216,46 @@ for i in range(args.num_samples):
 
     print('sample i : ',i)
     swag_model.sample(args.scale, cov=args.cov_mat and (not args.use_diag_bma))
-
     print("SWAG Sample %d/%d. BN update" % (i + 1, args.num_samples))
     utils.bn_update(loaders["train"], swag_model, verbose=True, subset=0.1)
     print("SWAG Sample %d/%d. EVAL" % (i + 1, args.num_samples))
+
+    resnet50_model = torchvision.models.resnet50() 
+
+    resnet50_params_name = resnet50_model.state_dict().keys()
+
+    resnet50_state_dict = {}
+
+    idx = 0
+
+    for param_name in resnet50_params_name:
+
+        if param_name.split('.')[-1]=='weight':
+
+            resnet50_state_dict[param_name] = swag_model.params[idx][0].weight
+
+            idx +=1
+
+        elif param_name.split('.')[-1] =='bias':
+
+            resnet50_state_dict[param_name] = swag_model.params[idx][0].bias
+
+            idx +=1
+
+        else:
+
+            resnet50_state_dict[param_name] = swag_model.state_dict()['base.'+param_name]
+
+    print('resnet_state_dict : ',resnet50_state_dict.keys())
+
+    utils.save_model_sample_checkpoint(
+        args.swag_sample_model_dir, i, name="swag_sample", state_dict=resnet50_state_dict
+    )
+
+    checkpoint = torch.load(args.ckpt)
+    resnet50_model.load_state_dict(checkpoint["state_dict"])
+
+    # break
 
     # activations_all = []
     # def store_activations(module, input, output):
@@ -226,7 +276,7 @@ for i in range(args.num_samples):
 
     # hook = swag_model.base.layer4[1].register_forward_hook(store_activations)
 
-    res = utils.predict(loaders["test"], swag_model, sample_id=i, verbose=True)
+    res = utils.predict(loaders["test"], resnet50_model, sample_id=i, verbose=True)
     predictions = res["predictions"]
     prediction_result_dict = res["result_dict"]
 
