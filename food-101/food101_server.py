@@ -12,6 +12,7 @@ from PIL import Image
 from torchvision import transforms
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 
 
 base_dir = '/home/zhaoy32/Desktop/swa_gaussian/food-101/'
@@ -34,6 +35,7 @@ test_transform = transforms.Compose([
     transforms.Normalize(IMG_MEAN, IMG_STD)
 ])
 
+CHOOSED_CLASSES = ['french_toast', 'greek_salad', 'caprese_salad', 'chocolate_cake', 'pizza', 'cup_cakes', 'carrot_cake','cheesecake','pancakes', 'strawberry_shortcake']
 
 
 app = Flask(__name__)
@@ -59,9 +61,7 @@ def calculate_jacobian():
 
     resnet50_model.eval()
 
-    print('image_path',image_id_path_dict[image_id]['image_path'].split('./eval_images/')[1])
-
-    image_path = os.path.join(base_dir, 'images', image_id_path_dict[image_id]['image_path'].split('./eval_images/')[1])
+    image_path = os.path.join(base_dir, 'images', image_id_path_dict[str(image_id)]['image_path'].split('./eval_images/')[1])
 
     image = Image.open(image_path)
 
@@ -73,7 +73,7 @@ def calculate_jacobian():
 
     y = resnet50_model(x)
 
-    y = y.reshape[0][class_id] #(1,10)
+    y = y[0][class_id] #(1,10)
 
     grad_x, = torch.autograd.grad(y, x, create_graph=True)
 
@@ -135,38 +135,13 @@ def calculate_jacobian_avg():
 
     image_id = client_data['image_id']
 
-    class_id = client_data['class_id']
+    data = json.load(open(os.path.join(base_dir,'jac_avg','jac_avg_'+str(image_id)+'.json'),'r'))
 
-    jacobian_avg = np.zeros((3,224,224))
+    for i in range(len(data)): # class id
 
-    for sample_model_file in os.listdir(os.path.join(base_dir,'sample_models')):
+        data[i] = {'label_id': i, 'label': CHOOSED_CLASSES[i] ,'data': data[i]}
 
-        sample_model_dir = os.path.join(base_dir,'sample_models','swag_sample-'+str(sample_id)+'.pt')
-
-        checkpoint = torch.load(os.path.join(sample_model_dir,sample_model_file))
-        resnet50_model.load_state_dict(checkpoint["state_dict"])
-
-    image_path = os.path.join(base_dir, image_id_path_dict[image_id]['image_path'].split('./eval_images/')[1])
-
-    image = Image.open(image_path)
-
-    image = test_transform(image)
-
-    x = Variable(image,requires_grad=True)
-
-    x = x.cuda(non_blocking=True).unsqueeze(0)
-
-    y = resnet50_model(x)
-
-    y = y.reshape(-1)[class_id]
-
-    grad_x, = torch.autograd.grad(y, x, create_graph=create_graph)
-
-    jacobian =grad_x.reshape(x.shape)
-
-    print('jacobian_shape : ',jacobian.shape)
-
-    return flask.jsonify({'jacobian':jacobian,'sample_id':sample_id,'class_id':class_id,'image_id':image_id})
+    return flask.jsonify({'jacobian_avg':data,'image_id':image_id})
     
 
 
