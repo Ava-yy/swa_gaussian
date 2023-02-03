@@ -220,7 +220,7 @@ for i in range(args.num_samples):
     utils.bn_update(loaders["train"], swag_model, verbose=True, subset=0.1)
     print("SWAG Sample %d/%d. EVAL" % (i + 1, args.num_samples))
 
-    resnet50_model = torchvision.models.resnet50() 
+    resnet50_model = torch.load("../../food-101/food101_finetune.pt")
 
     resnet50_params_name = resnet50_model.state_dict().keys()
 
@@ -229,6 +229,8 @@ for i in range(args.num_samples):
     idx = 0
 
     for param_name in resnet50_params_name:
+
+        print(param_name)
 
         if param_name.split('.')[-1]=='weight':
 
@@ -252,10 +254,8 @@ for i in range(args.num_samples):
         args.swag_sample_model_dir, i, name="swag_sample", state_dict=resnet50_state_dict
     )
 
-    checkpoint = torch.load(args.ckpt)
+    checkpoint = torch.load(os.path.join(args.swag_sample_model_dir,'swag_sample_'+str(i)+'.pt'))
     resnet50_model.load_state_dict(checkpoint["state_dict"])
-
-    # break
 
     # activations_all = []
     # def store_activations(module, input, output):
