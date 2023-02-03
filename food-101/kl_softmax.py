@@ -120,6 +120,9 @@ def kl_image(base_dir,image_swag_result_dir):
 				image_kl[image_id][sample_i][sample_j] = kl_pair_res
 				image_kl[image_id][sample_j][sample_i] = kl_pair_res
 
+	for image_id,kl_matrix in image_kl.items():
+
+		image_kl[image_id] = kl_matrix.tolist()
 
 	json.dump(image_kl,open(os.path.join(base_dir,'image_swag_kl.json'),'w'))
 
