@@ -16,6 +16,10 @@ base_dir = '/home/zhaoy32/Desktop/swa_gaussian/food-101/'
 image_swag_result_dir = os.path.join(base_dir,'image_swag_result/')
 swag_all_images_result_dir = os.path.join(base_dir,'json_results2/')
 # base_dir = base_dir if base_dir[-1] == '/' else base_dir+'/'
+jacobian_avg_dir = os.path.join(base_dir,'jac_avg')
+
+if not os.path.exists(jacobian_avg_dir):
+    os.mkdir(jacobian_avg_dir)
 
 resnet50_model = torch.load(os.path.join(base_dir,"food101_finetune.pt"))
 
@@ -38,9 +42,8 @@ num_classes = 10
 num_models = 100
 
 
-def calculate_jacobian_avg(base_dir):
 
-    jacobian_avg_dict = {}
+def calculate_jacobian_avg(base_dir):
 
     for image_id, value in image_id_path_dict.items():
 
@@ -87,9 +90,8 @@ def calculate_jacobian_avg(base_dir):
 
         jacobian_avg /= num_models
 
-        jacobian_avg_dict[image_id] = jacobian_avg
+        json.dump(jacobian_avg.tolist(),open(os.path.join(base_dir,'jac_avg','jac_avg_'+str(image_id)+'.json'),'w'))
 
-    json.dump(jacobian_avg_dict,open(os.path.join(base_dir,'jacobian_avg.json'),'w'))
 
 
 if __name__ == '__main__':
