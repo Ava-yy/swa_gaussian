@@ -37,7 +37,7 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=32,
+    default=64,
     metavar="N",
     help="input batch size (default: 256)",
 )
@@ -53,7 +53,7 @@ parser.add_argument(
 parser.add_argument(
     "--model",
     type=str,
-    default='vgg16', #resnet50
+    default="vgg16", #resnet50
     required=False,
     metavar="MODEL",
     help="model name (default: None)",
@@ -124,6 +124,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--cpu", action="store_false", help="run using cpu (default: off)"
+)
+
+parser.add_argument(
     "--swa_start",
     type=float,
     default=0,
@@ -174,6 +178,9 @@ if torch.cuda.is_available():
     args.device = torch.device("cuda")
 else:
     args.device = torch.device("cpu")
+
+# args.device = torch.device("cpu")
+
 
 print("Preparing directory %s" % args.dir)
 os.makedirs(args.dir, exist_ok=True)
@@ -310,6 +317,7 @@ for epoch in range(start_epoch, args.epochs):
                 optimizer,
                 subset=subset,
                 verbose=True,
+                cuda=args.cpu,
             )
 
             num_iterates += 1
@@ -322,7 +330,7 @@ for epoch in range(start_epoch, args.epochs):
             model.to(args.device)
     else:
         train_res = utils.train_epoch(
-            loaders["train"], model, criterion, optimizer, verbose=True
+            loaders["train"], model, criterion, optimizer, verbose=True,cuda=args.cpu
         )
 
 
@@ -332,7 +340,7 @@ for epoch in range(start_epoch, args.epochs):
         or epoch == args.epochs - 1
     ):
         print("EPOCH %d. EVAL" % (epoch + 1))
-        test_res = utils.eval(loaders["test"], model, criterion, verbose=True)
+        test_res = utils.eval(loaders["test"], model, criterion, cuda=args.cpu, verbose=True)
     else:
         test_res = {"loss": None, "accuracy": None}
 
@@ -346,9 +354,9 @@ for epoch in range(start_epoch, args.epochs):
             swag_model.to(args.device)
             swag_model.sample(0.0)
             print("EPOCH %d. SWAG BN" % (epoch + 1))
-            utils.bn_update(loaders["train"], swag_model, verbose=True, subset=0.1)
+            utils.bn_update(loaders["train"], swag_model, cuda=args.cpu,verbose=True, subset=0.1)
             print("EPOCH %d. SWAG EVAL" % (epoch + 1))
-            swag_res = utils.eval(loaders["test"], swag_model, criterion, verbose=True)
+            swag_res = utils.eval(loaders["test"], swag_model, criterion, cuda=args.cpu, verbose=True)
             swag_model.to(args.swa_device)
         else:
             swag_res = {"loss": None, "accuracy": None}
