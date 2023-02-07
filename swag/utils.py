@@ -48,6 +48,13 @@ def save_checkpoint(dir, epoch, name="checkpoint", **kwargs):
     torch.save(state, filepath)
 
 
+def save_model_sample_checkpoint(dir, sample_id, name="swag_sample", **kwargs):
+    state = {"sample_id": sample_id}
+    state.update(kwargs)
+    filepath = os.path.join(dir, "%s_%d.pt" % (name, sample_id))
+    torch.save(state, filepath)
+
+
 def train_epoch(
     loader,
     model,
@@ -208,7 +215,7 @@ def predict(loader, model, sample_id, verbose=False):
             #print('batch size : ',batch_size) 1
             
             prediction = F.softmax(output, dim=1).cpu().numpy()
-            # print('prediction : ',prediction) [[_,_,_,_,_,_,_,_,_,_]]
+            # print('prediction : ',prediction) [[...]]
 
             swag_prediction_list.append({'image_path':image_path[0],'label_id':int(target.item()),'label':category[0],'image_id':int(image_id.item()),'predict_softmax':prediction[0].tolist(),'sample_id':sample_id})
 
@@ -218,9 +225,9 @@ def predict(loader, model, sample_id, verbose=False):
 
             offset += batch_size
         
-    return {"result_dict": swag_prediction_list, "predictions": np.vstack(predictions),"targets": np.concatenate(targets)}
-
     # return {"predictions": np.vstack(predictions), "targets": np.concatenate(targets)}
+
+    return {"result_dict": swag_prediction_list, "predictions": np.vstack(predictions),"targets": np.concatenate(targets)}
 
 
 def moving_average(net1, net2, alpha=1):
