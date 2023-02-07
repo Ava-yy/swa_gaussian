@@ -21,7 +21,7 @@ image_swag_result_dir = os.path.join(base_dir,'image_swag_result/')
 swag_all_images_result_dir = os.path.join(base_dir,'json_results2/')
 # base_dir = base_dir if base_dir[-1] == '/' else base_dir+'/'
 
-resnet50_model = torch.load(os.path.join(base_dir,"food101_finetune.pt"))
+vgg16_model = torch.load(os.path.join(base_dir,"food101_vgg16_finetune.pt")) 
 
 image_id_path_dict = json.load(open(os.path.join(base_dir,'image_id_path_dict.json'),'r'))
 
@@ -49,11 +49,11 @@ def calculate_jacobian():
     client_data = flask.request.json
     image_id = client_data['image_id']
     sample_id = client_data['sample_id']
-    class_id = client_data['class_id']å
+    class_id = client_data['class_id']
     sample_model_dir = os.path.join(base_dir,'sample_models','swag_sample-'+str(sample_id)+'.pt')
     checkpoint = torch.load(sample_model_dir)
-    resnet50_model.load_state_dict(checkpoint["state_dict"])
-    resnet50_model.eval()
+    vgg16_model.load_state_dict(checkpoint["state_dict"])
+    vgg16_model.eval()
     image_path = os.path.join(base_dir, 'images', image_id_path_dict[str(image_id)]['image_path'].split('./eval_images/')[1])
     image = Image.open(image_path)
     image = test_transform(image)
@@ -70,6 +70,37 @@ def calculate_jacobian():
     print('jacobian shape : ',jacobian.shape) #(3,224,224)
  
     return flask.jsonify({'jacobian': b64encode(jacobian.tobytes()).decode(), 'jacobian_shape': jacobian.shape,'sample_id':sample_id,'class_id':class_id,'image_id':image_id,'prediction': predict_id.item()})
+    
+
+
+@app.route('/calculate_jacobian_finetune', methods=['GET','POST'])
+
+def calculate_jacobian_finetune():
+
+    client_data = flask.request.json
+    image_id = client_data['image_id']
+    class_id = client_data['class_id']
+    
+    # sample_model_dir = os.path.join(base_dir,'sample_models','swag_sample-'+str(sample_id)+'.pt')
+    # checkpoint = torch.load(sample_model_dir)
+    # resnet50_model.load_state_dict(checkpoint["state_dict"])
+    vgg16_model.eval()
+    image_path = os.path.join(base_dir, 'images', image_id_path_dict[str(image_id)]['image_path'].split('./eval_images/')[1])
+    image = Image.open(image_path)
+    image = test_transform(image)
+    x = image.cuda(non_blocking=True).unsqueeze(0)
+    x.requires_grad_(True)
+    y = resnet50_model(x) # shape (1,10) tensor([[ -3.0459,  -9.2013,  -8.5121,   3.3400, -12.8477,  -6.3842,  -3.1321, -3.0611,  -0.2655,  -3.6536]], device='cuda:0', grad_fn=<AddmmBackward0>)
+    predict_id = torch.argmax(y[0])
+    y_class = y[0][class_id] #(1,10)
+    if x.grad is not None:
+        x.grad.data.fill_(0)       
+    y_class.backward(retain_graph=True) #(1,3,224,224)
+    print('grad_x shape :',x.grad.data.shape) #(1,3,224,224)
+    jacobian = x.grad.data[0].cpu().data.numpy()
+    print('jacobian shape : ',jacobian.shape) #(3,224,224)
+ 
+    return flask.jsonify({'jacobian': b64encode(jacobian.tobytes()).decode(), 'jacobian_shape': jacobian.shape,'class_id':class_id,'image_id':image_id,'prediction': predict_id.item()})
     
 
 # @app.route('/calculate_jacobian', methods=['GET','POST'])
