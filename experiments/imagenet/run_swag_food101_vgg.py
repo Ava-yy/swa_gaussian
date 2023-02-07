@@ -10,7 +10,6 @@ import torch.nn.functional as F
 import torchvision.models
 
 from data_finetune import *
-from dataset import *
 
 from swag import utils,losses
 #from swag import utils_orig as utils
@@ -38,7 +37,7 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=64,
+    default=32,
     metavar="N",
     help="input batch size (default: 256)",
 )
