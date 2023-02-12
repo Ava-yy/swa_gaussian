@@ -128,71 +128,68 @@ test_dataset = myDataset(test_df, 'test')
 test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False,
                 batch_size=BATCH_SIZE, pin_memory=False)#, num_workers=1)
 
-# # load pretrained resnet model
-# # model_ft = torch.load("food101_finetune.pt")
-# model_ft = torch.load("food101_googlenet_finetune.pt")
-# # load googlenet pretrained on ImageNet 1000 classes ==> TODO finetune googlenet on food101
-# # google_net = torchvision.models.inception_v3(pretrained=True)
+# load pretrained resnet model
+# model_ft = torch.load("food101_finetune.pt")
 
-# model_ft.to(DEVICE)
-# print(model_ft)
-# model_ft.eval()
-# # print('model_ft state dict: ',model_ft.state_dict().keys())
-# # print('model_ft conv1 weight : ',model_ft.state_dict()['conv1.weight'][0][0][:5])
-# # print('model_ft fc weight : ',model_ft.state_dict()['fc.weight'][:10])
+# load fintuned googlenet model
+model_ft = torch.load("food101_googlenet_finetune.pt")
 
-# print('start laplace')
-# la = Laplace(model_ft, 'classification',
-#              subset_of_weights='last_layer',
-#              hessian_structure='full')
+model_ft.to(DEVICE)
+print(model_ft)
+model_ft.eval()
 
-# la.fit(train_loader)
+print('start laplace')
+la = Laplace(model_ft, 'classification',
+             subset_of_weights='last_layer',
+             hessian_structure='full')
 
-# Hessian = la.posterior_covariance
-# print('Hessian :', Hessian.size()) #(20490,20490) for resnet, (10240,10240) for googlenet
+la.fit(train_loader)
 
-# Hessian = Hessian.detach().cpu().numpy()
-# cov_mat_fc = inv(Hessian[:10240,:10240])
+Hessian = la.posterior_covariance
+print('Hessian :', Hessian.size()) #(20490,20490) for resnet, (10240,10240) for googlenet
 
-# mean_fc = model_ft.state_dict()['fc.weight'] # (num of classes in food101, 2048) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
-# mean_fc = mean_fc.detach().cpu().numpy()
+Hessian = Hessian.detach().cpu().numpy()
+cov_mat_fc = inv(Hessian[:10240,:10240])
 
-# np.save(open(os.path.join(BASE_DIR,'googlenet_fc_mean.npy'),'wb'),mean_fc)
-# np.save(open(os.path.join(BASE_DIR,'googlenet_fc_cov_mat.npy'),'wb'),cov_mat_fc)
+mean_fc = model_ft.state_dict()['fc.weight'] # (num of classes in food101, 2048) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
+mean_fc = mean_fc.detach().cpu().numpy()
 
-# mean_fc = np.load(open(os.path.join(BASE_DIR,'googlenet_fc_mean.npy'),'rb'))
-# cov_mat_fc = np.load(open(os.path.join(BASE_DIR,'googlenet_fc_cov_mat.npy'),'rb'))
+np.save(open(os.path.join(BASE_DIR,'googlenet_fc_mean.npy'),'wb'),mean_fc)
+np.save(open(os.path.join(BASE_DIR,'googlenet_fc_cov_mat.npy'),'wb'),cov_mat_fc)
 
-# print('mean_fc shape :', mean_fc.shape)
-# print('cov_mat_fc shape : ',cov_mat_fc.shape)
+mean_fc = np.load(open(os.path.join(BASE_DIR,'googlenet_fc_mean.npy'),'rb'))
+cov_mat_fc = np.load(open(os.path.join(BASE_DIR,'googlenet_fc_cov_mat.npy'),'rb'))
+
+print('mean_fc shape :', mean_fc.shape)
+print('cov_mat_fc shape : ',cov_mat_fc.shape)
 
 for sample_id in range(NUM_MODELS):
-    
+
     print('sample id : ',sample_id)
 
-    # random.seed(sample_id)
+    random.seed(sample_id)
 
-    # # pytorch method
-    # # m = MultivariateNormal(torch.tensor(mean_fc), torch.tensor(cov_mat_fc)) # https://pytorch.org/docs/stable/distributions.html
-    # # fc_weight_sample = m.sample() # TODO: didn't find where to set seed  https://pytorch.org/docs/stable/_modules/torch/distributions/distribution.html#Distribution.sample
-    # # fc_weight_sample = fc_weight_sample.numpy()
+    # pytorch method
+    # m = MultivariateNormal(torch.tensor(mean_fc), torch.tensor(cov_mat_fc)) # https://pytorch.org/docs/stable/distributions.html
+    # fc_weight_sample = m.sample() # TODO: didn't find where to set seed  https://pytorch.org/docs/stable/_modules/torch/distributions/distribution.html#Distribution.sample
+    # fc_weight_sample = fc_weight_sample.numpy()
 
-    # # numpy method
-    # fc_weight_sample = np.random.multivariate_normal(mean_fc.flatten(),cov_mat_fc) #
+    # numpy method
+    fc_weight_sample = np.random.multivariate_normal(mean_fc.flatten(),cov_mat_fc) #
 
-    # # scipy method
-    # # fc_weight_sample = multivariate_normal.rvs(mean=mean_fc.flatten(), cov=cov_mat_fc, size=1, random_state=sample_id)
+    # scipy method
+    # fc_weight_sample = multivariate_normal.rvs(mean=mean_fc.flatten(), cov=cov_mat_fc, size=1, random_state=sample_id)
 
-    # print('fc_weight_la shape: ',fc_weight_sample.shape) #(10240,)
-    # with torch.no_grad():  
-    #     for name, param in model_ft.named_parameters():
-    #         print(name,param.numel(),param.size())
-    #         if name=='fc.weight':
-    #             print('before param', param,param.shape)
-    #             param.data = torch.tensor(fc_weight_sample.reshape(param.shape)) #(num of classes in food101, 2048) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
-    #             print('after param : ',param,param.shape)
+    print('fc_weight_la shape: ',fc_weight_sample.shape) #(10240,)
+    with torch.no_grad():  
+        for name, param in model_ft.named_parameters():
+            print(name,param.numel(),param.size())
+            if name=='fc.weight':
+                print('before param', param,param.shape)
+                param.data = torch.tensor(fc_weight_sample.reshape(param.shape)) #(num of classes in food101, 2048) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
+                print('after param : ',param,param.shape)
 
-    # torch.save(model_ft.state_dict(), os.path.join(LA_MODELS_DIR,'la_googlenet_sample_'+str(sample_id)+'.pt'))
+    torch.save(model_ft.state_dict(), os.path.join(LA_MODELS_DIR,'la_googlenet_sample_'+str(sample_id)+'.pt'))
 
     # test sample model on test dataset
     model_ft = torch.load("food101_googlenet_finetune.pt")
