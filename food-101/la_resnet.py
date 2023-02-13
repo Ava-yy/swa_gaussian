@@ -33,8 +33,14 @@ Datasets = 'FOOD101'
 NUM_MODELS = 100
 
 BASE_DIR = '/home/zhaoy32/Desktop/swa_gaussian/food-101'
+
 LA_MODELS_DIR = os.path.join(BASE_DIR,'googlenet_la_sample_models')
+if not os.path.exists(LA_MODELS_DIR):
+    os.mkdir(LA_MODELS_DIR)
+
 LA_TEST_DIR = os.path.join(BASE_DIR,'la_test_result')
+if not os.path.exists(LA_TEST_DIR):
+    os.mkdir(LA_TEST_DIR)
 
 if Datasets == 'FOOD101':
     CHOOSED_CLASSES = ['french_toast', 'greek_salad', 'caprese_salad', 'chocolate_cake', 'pizza', 'cup_cakes', 'carrot_cake','cheesecake','pancakes', 'strawberry_shortcake']
@@ -74,18 +80,15 @@ class myDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
 
         c_row = self.dataset.iloc[index]
-
         image_id = c_row['image_id']
-
         image_path, target = c_row['path'], self.CHOOSED_CLASSES.index(c_row['category'])  #image and target
         image = Image.open(image_path)
-
         image = self.transform(image)
-        
-        return image, int(target),c_row['category'], image_path,image_id
 
-        # return image, int(target)
-
+        if self.mode=='train':
+            return image, int(target)
+        else:
+            return image, int(target),c_row['category'], image_path,image_id
 
     def __len__(self):
         return self.dataset.shape[0]
@@ -96,7 +99,6 @@ def predict(loader, model, sample_id, cuda=True, verbose=False):
     targets = list()
 
     model.eval()
-    print(model)
     prediction_list = []
     
     with torch.no_grad():
@@ -106,7 +108,7 @@ def predict(loader, model, sample_id, cuda=True, verbose=False):
                 input = input.cuda(non_blocking=True)
             output = model(input)
             batch_size = input.size(0)
-            #print('batch size : ',batch_size) 1
+            #print('output size : ',output.shape) #(1,10)
             prediction = F.softmax(output, dim=1).cpu().numpy()
             prediction_list.append({'image_path':image_path[0],'label_id':int(target.item()),'label':category[0],'image_id':int(image_id.item()),'predict_softmax':prediction[0].tolist(),'sample_id':sample_id})
             targets.append(target.numpy())
@@ -128,10 +130,9 @@ test_dataset = myDataset(test_df, 'test')
 test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False,
                 batch_size=BATCH_SIZE, pin_memory=False)#, num_workers=1)
 
-# load pretrained resnet model
+# # load pretrained resnet model
 # model_ft = torch.load("food101_finetune.pt")
-
-# load fintuned googlenet model
+# load finetuned googlenet model
 model_ft = torch.load("food101_googlenet_finetune.pt")
 
 model_ft.to(DEVICE)
@@ -145,55 +146,57 @@ la = Laplace(model_ft, 'classification',
 
 la.fit(train_loader)
 
-Hessian = la.posterior_covariance
-print('Hessian :', Hessian.size()) #(20490,20490) for resnet, (10240,10240) for googlenet
+cov_mat_fc = la.posterior_covariance.detach().cpu().numpy() # inverse of Hessian matrix
+print('cov matrix :', cov_mat_fc.shape) #(20490,20490) for resnet； (10250,10250) for googlenet
+cov_mat_fc = cov_mat_fc[:10240,:10240]
 
-Hessian = Hessian.detach().cpu().numpy()
-cov_mat_fc = inv(Hessian[:10240,:10240])
-
-mean_fc = model_ft.state_dict()['fc.weight'] # (num of classes in food101, 2048) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
-mean_fc = mean_fc.detach().cpu().numpy()
+mean_fc = model_ft.state_dict()['fc.weight'] # (10, 1024) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
+mean_fc = mean_fc.detach().cpu().numpy() 
 
 np.save(open(os.path.join(BASE_DIR,'googlenet_fc_mean.npy'),'wb'),mean_fc)
 np.save(open(os.path.join(BASE_DIR,'googlenet_fc_cov_mat.npy'),'wb'),cov_mat_fc)
-
 mean_fc = np.load(open(os.path.join(BASE_DIR,'googlenet_fc_mean.npy'),'rb'))
 cov_mat_fc = np.load(open(os.path.join(BASE_DIR,'googlenet_fc_cov_mat.npy'),'rb'))
 
-print('mean_fc shape :', mean_fc.shape)
-print('cov_mat_fc shape : ',cov_mat_fc.shape)
+print('mean_fc shape :', mean_fc.shape) # (10, 1024)
+print('cov_mat_fc shape : ',cov_mat_fc.shape) #(20490,20490) for resnet, (10250,10250) for googlenet
+
+fc_dist_samples = la.sample(n_samples=100).detach().cpu().numpy()  #(100,10250)
 
 for sample_id in range(NUM_MODELS):
 
     print('sample id : ',sample_id)
-
     random.seed(sample_id)
 
     # pytorch method
     # m = MultivariateNormal(torch.tensor(mean_fc), torch.tensor(cov_mat_fc)) # https://pytorch.org/docs/stable/distributions.html
     # fc_weight_sample = m.sample() # TODO: didn't find where to set seed  https://pytorch.org/docs/stable/_modules/torch/distributions/distribution.html#Distribution.sample
     # fc_weight_sample = fc_weight_sample.numpy()
-
     # numpy method
     fc_weight_sample = np.random.multivariate_normal(mean_fc.flatten(),cov_mat_fc) #
-
     # scipy method
     # fc_weight_sample = multivariate_normal.rvs(mean=mean_fc.flatten(), cov=cov_mat_fc, size=1, random_state=sample_id)
 
     print('fc_weight_la shape: ',fc_weight_sample.shape) #(10240,)
     with torch.no_grad():  
-        for name, param in model_ft.named_parameters():
-            print(name,param.numel(),param.size())
-            if name=='fc.weight':
-                print('before param', param,param.shape)
-                param.data = torch.tensor(fc_weight_sample.reshape(param.shape)) #(num of classes in food101, 2048) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
-                print('after param : ',param,param.shape)
+        # for name, param in model_ft.named_parameters():
+        #     print(name,param.numel(),param.size())
+        #     if name=='fc.weight':
+        #         print('before param', param,param.shape)
+        #         param.data = torch.tensor(fc_weight_sample.reshape(param.shape)) #(num of classes in food101, 2048) for googlenet; (10,4096) for vgg16; (10,2048) for resnet
+        #         print('after param : ',param,param.shape)
 
-    torch.save(model_ft.state_dict(), os.path.join(LA_MODELS_DIR,'la_googlenet_sample_'+str(sample_id)+'.pt'))
+        # numpy way of sampling
+        model_ft.fc.weight.data = torch.tensor(fc_weight_sample.reshape(model_ft.fc.weight.data.shape))
 
+        # laplace package's way of sampling
+        # model_ft.fc.weight.data = torch.tensor(fc_dist_samples[sample_id][:10240].reshape(model_ft.fc.weight.data.shape))
+
+    torch.save(model_ft.fc.state_dict(), os.path.join(LA_MODELS_DIR,'la_googlenet_fc_sample_'+str(sample_id)+'.pt'))
+   
     # test sample model on test dataset
     model_ft = torch.load("food101_googlenet_finetune.pt")
-    model_ft.load_state_dict(torch.load(os.path.join(LA_MODELS_DIR,'la_googlenet_sample_'+str(sample_id)+'.pt')))
+    model_ft.fc.load_state_dict(torch.load(os.path.join(LA_MODELS_DIR,'la_googlenet_fc_sample_'+str(sample_id)+'.pt')))
     res = predict(test_loader, model_ft, sample_id=sample_id, verbose=True)
     prediction_result_dict = res["result_dict"]
     json.dump(prediction_result_dict,open(os.path.join(LA_TEST_DIR, 'la_test_sample_'+str(sample_id)+'.json'),'w'))

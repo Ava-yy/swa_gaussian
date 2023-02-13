@@ -26,7 +26,6 @@ model_ft = torch.load(os.path.join(base_dir,"food101_googlenet_finetune.pt"))
 
 image_id_path_dict = json.load(open(os.path.join(base_dir,'image_id_path_dict.json'),'r'))
 
-
 IMG_SIZE = (224, 224) 
 IMG_MEAN = [0.485, 0.456, 0.406]
 IMG_STD = [0.229, 0.224, 0.225]
@@ -98,48 +97,38 @@ num_models = 100
 
 
 def calculate_jacobian_avg(base_dir):
-
+    count = 0
     for image_id, value in image_id_path_dict.items():
-
+        count +=1
+        print(count)        
         label = value['label']
-
         label_id = value['label_id']
-
         image_path = os.path.join(base_dir, 'images', image_id_path_dict[image_id]['image_path'].split('./eval_images/')[1])
-
         image = Image.open(image_path)
-
-        image = test_transform(image)
-        
-        jacobian_avg = np.zeros((num_classes,image.shape[0],image.shape[1],image.shape[2]))
-        
+        image = test_transform(image)    
+        jacobian_avg = np.zeros((num_classes,image.shape[0],image.shape[1],image.shape[2]))        
         x = image.cuda(non_blocking=True).unsqueeze(0)
-
         x.requires_grad_(True)
 
         for sample_model_file in os.listdir(la_sample_model_dir):
-
-            sample_id = sample_model_file.split('la_googlenet_sample_')[1].split('.pt')[0]
-
-            sample_model_dir = os.path.join(la_sample_model_dir,'la_googlenet_sample_'+sample_id+'.pt')
-
-            checkpoint = torch.load(sample_model_dir) # we saved state_dict of model as .pt
-            model_ft.load_state_dict(checkpoint)
-
+            sample_id = sample_model_file.split('la_googlenet_fc_sample_')[1].split('.pt')[0]
+            sample_model_dir = os.path.join(la_sample_model_dir,'la_googlenet_fc_sample_'+sample_id+'.pt')
+            model_ft = torch.load("food101_googlenet_finetune.pt")
+            model_ft.fc.load_state_dict(torch.load(sample_model_dir))
             model_ft.eval()
 
             y = model_ft(x) # shape (1,10) tensor([[ -3.0459,  -9.2013,  -8.5121,   3.3400, -12.8477,  -6.3842,  -3.1321, -3.0611,  -0.2655,  -3.6536]], device='cuda:0', grad_fn=<AddmmBackward0>)
 
             for class_id in range(y.shape[1]):
-                print('class id : ',class_id)
+                #print('class id : ',class_id)
                 y_class = y[0][class_id]
                 if x.grad is not None:
                     x.grad.data.fill_(0)
                 y_class.backward(retain_graph=True) #(1,3,224,224)
-                print('grad_x shape :',x.grad.data.shape) #(1,3,224,224)
+                #print('grad_x shape :',x.grad.data.shape) #(1,3,224,224)
                 jacobian = x.grad.data[0].cpu().data.numpy()
-                print('jacobian shape : ',jacobian.shape) #(3,224,224)
-                jacobian_avg[class_id] += jacobian[0]
+                #print('jacobian shape : ',jacobian.shape) #(3,224,224)
+                jacobian_avg[class_id] += jacobian
 
         jacobian_avg /= num_models
 

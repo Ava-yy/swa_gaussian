@@ -52,10 +52,10 @@ def calculate_jacobian():
     image_id = client_data['image_id']
     sample_id = client_data['sample_id']
     class_id = client_data['class_id']
-    sample_model_dir = os.path.join(la_sample_model_dir,'la_googlenet_sample_'+str(sample_id)+'.pt')
-    checkpoint = torch.load(sample_model_dir)
+    sample_model_dir = os.path.join(la_sample_model_dir,'la_googlenet_fc_sample_'+str(sample_id)+'.pt')
+    checkpoint_fc = torch.load(sample_model_dir)
     # vgg16_model.load_state_dict(checkpoint["state_dict"])
-    model_ft.load_state_dict(checkpoint) # we saved the state_dict of each sample googlenet model as .pt  
+    model_ft.fc.load_state_dict(checkpoint_fc) # we saved the state_dict of each sample googlenet model as .pt  
     model_ft.eval()
     image_path = os.path.join(base_dir, 'images', image_id_path_dict[str(image_id)]['image_path'].split('./eval_images/')[1])
     image = Image.open(image_path)
